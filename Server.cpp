@@ -7,11 +7,11 @@
 
 using namespace std;
 
-SOCKET Connections[100];
+SOCKET Connections[10];
 int Counter = 0;
 
-int ClientNumb[100];
-int N[50];
+int ClientNumb[10];
+int N[5];
 int Lobby[2] = { -1, -1 };
 bool player1 = true;
 bool player2 = true;
@@ -62,6 +62,7 @@ void ClientHandler(int index) {
 	int pl1 = -1;
 	int pl2 = -1;
 
+	bool EntryMsg = true;
 	bool MakeNumber = true;
 	bool EntryLobby = true;
 	bool CheckCuple = true;
@@ -72,31 +73,35 @@ void ClientHandler(int index) {
 
 	while (true) {
 
-
 		recv(Connections[index], (char*)&msg_size, sizeof(int), NULL);
 		char* msg = new char[msg_size + 1];
 		msg[msg_size] = '\0';
 		recv(Connections[index], msg, msg_size, NULL);
-		number = CharToInt(msg, msg_size);
+		
 
-		//Загадывание клиентом числа
-		if (MakeNumber) {
+		//Проверка ввода
+		if (MakeNumber || StartGame) {
 			if (msg[0] == 0) {
 				continue;
 			}
-			if (number != -1) {
-				ClientNumb[index] = number;
-				cout << "Загаданное число пользователя (" << index + 1 << "): " << ClientNumb[index] << endl;
-				msgtoclient = "Вы загадали число: " + to_string(number) + '\n';
-				SendMessageString(msgtoclient, Connections[index]);
-				MakeNumber = false;
-			}
-			else {
-				msgtoclient = "Нужно ввести натуральное число!\n";
+			number = CharToInt(msg, msg_size);
+			if (number <= 0) {
+				msgtoclient = "Нужно ввести НАТУРАЛЬНОЕ число. Повторите попытку: ";
 				SendMessageString(msgtoclient, Connections[index]);
 				continue;
 			}
 		}
+
+
+		//Загадывание клиентом числа
+		if (MakeNumber) {
+			ClientNumb[index] = number;
+			cout << "Загаданное число пользователя (" << index + 1 << "): " << ClientNumb[index] << endl;
+			msgtoclient = "Вы загадали число: " + to_string(number) + '\n';
+			SendMessageString(msgtoclient, Connections[index]);
+			MakeNumber = false;
+		}
+
 
 		//Вход в лобби
 		if (EntryLobby) {
@@ -111,22 +116,22 @@ void ClientHandler(int index) {
 		}
 
 
-		//Проверка подключения
+		//Проверка подключения второго игрока
 		while (CheckCuple) {
-
-			if (Lobby[1] == -1) {
+			if (Lobby[1] == -1 && EntryMsg) {
 				msgtoclient = "Второй игрок не подключился или не загадал число\n";
 				SendMessageString(msgtoclient, Connections[index]);
-				Sleep(3000);
+				EntryMsg = false;
 				continue;
 			}
-			else if (Lobby[0] == index) {
+			else if (Lobby[0] == index && Lobby[1] != -1) {
 				msgtoclient = "Второй игрок подключился! Игра начинается\n";
 				SendMessageString(msgtoclient, Connections[index]);
 				CheckCuple = false;
+				EntryMsg = true;
 				continue;
 			}
-			else {
+			else if (Lobby[1] == index) {
 				msgtoclient = "Вы подключились к игре! Игра начианается\n";
 				SendMessageString(msgtoclient, Connections[index]);
 				CheckCuple = false;
@@ -134,24 +139,30 @@ void ClientHandler(int index) {
 			}
 		}
 
+		
+		//Предподготовка к игре: очищение лобби для новых игроков, закрепление N шага
 		while (!StartGame)
 		{
 			if (Lobby[0] == index) {
 				pl1 = Lobby[0];
 				pl2 = Lobby[1];
 				player1 = true;
+
 			}
 			else {
 				pl1 = Lobby[0];
 				pl2 = Lobby[1];
 				player2 = true;
 			}
-			Sleep(5000);
 			if (player1 && player2) {
 				StartGame = true;
-				Lobby[0] = -1;
-				Lobby[1] = -1;
 				N[pl1] = 0;
+				if (index == pl2) { 
+					cout << "New Game " << pl1 << ' ' << pl2 << endl; 
+					Lobby[0] = -1;
+					Lobby[1] = -1;
+				}
+				break;
 			}
 		}
 
@@ -159,11 +170,13 @@ void ClientHandler(int index) {
 		//Игра
 		while (StartGame) {
 			int result;
-			//Case1
-			if (N[pl1] == -1) {
+			
+			/*if (N[pl1] == -1) {
 				EndGame = true;
 				StartGame = false;
-			}
+			}*/
+
+			//Case1
 			if (N[pl1] % 3 == 0) {
 				if (pl1 == index && !EntryMsgGl) {
 					msgtoclient = "Угадывай число второго игрока:  ";
@@ -171,7 +184,7 @@ void ClientHandler(int index) {
 					N[pl1] += 1;
 					break;
 				}
-				else if(pl2 == index && EntryMsgGl){
+				else if (pl2 == index && EntryMsgGl) {
 					msgtoclient = "Ваше число пытаются угадать\n";
 					SendMessageString(msgtoclient, Connections[pl2]);
 					EntryMsgGl = false;
@@ -216,7 +229,7 @@ void ClientHandler(int index) {
 
 			//Case3
 			else if (N[pl1] % 3 == 2) {
-				Sleep(10);
+				Sleep(100);
 				if (pl1 == index && EntryMsgGl) {
 					msgtoclient = "Ваше число пытаются угадать\n";
 					SendMessageString(msgtoclient, Connections[pl1]);
@@ -248,19 +261,19 @@ void ClientHandler(int index) {
 					N[pl1] += 1;
 					EntryMsgGl = true;
 					continue;
-				}	
-			}		
+				}
+			}
 		}
 		delete[] msg;
 	}
 }
 
 int main(int argc, char* argv[]) {
-	
+
 	SetConsoleCP(1251);
 	SetConsoleOutputCP(1251);
 
-	
+
 	//WSAStartup
 	WSAData wsaData;
 	WORD DLLVersion = MAKEWORD(2, 1);
@@ -282,14 +295,14 @@ int main(int argc, char* argv[]) {
 	cout << "Сервер запущен!\n";
 
 	SOCKET newConnection;
-	for (int i = 0; i < 100; i++) {
+	for (int i = 0; i < 10; i++) {
 		newConnection = accept(sListen, (SOCKADDR*)&addr, &sizeofaddr);
 
 		if (newConnection == 0) {
 			cout << "Ошибка #2\n";
 		}
 		else {
-			cout << "Пользователь (" << i+1 << ") подключился!" << endl;
+			cout << "Пользователь (" << i + 1 << ") подключился!" << endl;
 			string msg = "Загадай своё число: ";
 			SendMessageString(msg, newConnection);
 
